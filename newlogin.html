@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Recom AI - Light Login</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+
+  <style>
+    :root{
+      --bg:#f4f7ff;
+      --surface:#ffffff;
+      --surface2:#f8fbff;
+      --border:#dce6ff;
+      --accent:#5d9bff;
+      --accent2:#9f67ff;
+      --text:#1a2238;
+      --muted:#6f7a95;
+      --danger:#ff5a76;
+      --success:#00b87a;
+    }
+
+    *{ margin:0; padding:0; box-sizing:border-box; }
+
+    body{
+      font-family:'Jost',sans-serif;
+      background:var(--bg);
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+      position:relative;
+    }
+
+    .bg{
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(circle at top left, rgba(93,155,255,0.18), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(159,103,255,0.16), transparent 32%);
+    }
+
+    .grid{
+      position:absolute;
+      inset:0;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+      background-size:52px 52px;
+    }
+
+    .login-card{
+      position:relative;
+      z-index:5;
+      width:430px;
+      max-width:92%;
+      background:rgba(255,255,255,0.92);
+      border:1px solid rgba(255,255,255,0.8);
+      border-radius:28px;
+      padding:42px 34px;
+      backdrop-filter:blur(16px);
+      box-shadow:0 15px 45px rgba(65,88,150,0.12);
+      animation:fadeUp 0.6s ease;
+    }
+
+    @keyframes fadeUp{
+      from{ opacity:0; transform:translateY(18px); }
+      to{ opacity:1; transform:translateY(0); }
+    }
+
+    .logo{
+      width:78px;
+      height:78px;
+      margin:0 auto 18px;
+      border-radius:24px;
+      background:linear-gradient(135deg, var(--accent), var(--accent2));
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:white;
+      font-size:32px;
+      box-shadow:0 10px 28px rgba(93,155,255,0.25);
+    }
+
+    .title{
+      text-align:center;
+      font-family:'Cormorant Garamond',serif;
+      font-size:44px;
+      font-weight:700;
+      background:linear-gradient(135deg, #3d5eff, #8f4dff);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      margin-bottom:10px;
+    }
+
+    .subtitle{
+      text-align:center;
+      color:var(--muted);
+      font-size:15px;
+      margin-bottom:24px;
+    }
+
+    /* Tab Toggle */
+    .tab-toggle{
+      display:flex;
+      background:#f0f4ff;
+      border-radius:14px;
+      padding:4px;
+      margin-bottom:28px;
+    }
+
+    .tab-btn{
+      flex:1;
+      height:42px;
+      border:none;
+      border-radius:11px;
+      background:transparent;
+      font-family:'Jost',sans-serif;
+      font-size:14px;
+      font-weight:600;
+      color:var(--muted);
+      cursor:pointer;
+      transition:0.25s;
+    }
+
+    .tab-btn.active{
+      background:white;
+      color:var(--text);
+      box-shadow:0 3px 10px rgba(93,155,255,0.15);
+    }
+
+    .form-group{ margin-bottom:24px; }
+
+    .label{
+      display:block;
+      margin-bottom:10px;
+      font-size:14px;
+      font-weight:600;
+      color:var(--text);
+    }
+
+    .input-box{ position:relative; }
+
+    .input-box i{
+      position:absolute;
+      left:16px;
+      top:50%;
+      transform:translateY(-50%);
+      color:#7f8bad;
+      font-size:15px;
+    }
+
+    .input-box input{
+      width:100%;
+      height:58px;
+      border-radius:16px;
+      border:1.5px solid var(--border);
+      background:var(--surface2);
+      padding-left:48px;
+      padding-right:15px;
+      font-size:15px;
+      color:var(--text);
+      outline:none;
+      transition:0.25s;
+      font-family:'Jost',sans-serif;
+    }
+
+    .input-box input:focus{
+      border-color:var(--accent);
+      background:white;
+      box-shadow:0 0 0 4px rgba(93,155,255,0.12);
+    }
+
+    .helper{ margin-top:8px; font-size:12px; color:var(--muted); }
+
+    .error{
+      margin-top:7px;
+      color:var(--danger);
+      font-size:12px;
+      display:none;
+    }
+
+    .forgot-password{
+      display:inline-block;
+      margin-top:8px;
+      margin-left:0.3rem;
+      color:var(--accent2);
+      font-size:12px;
+      text-decoration:none;
+      font-weight:600;
+    }
+    .forgot-password:hover{ text-decoration:underline; }
+
+    .signin-btn{
+      width:100%;
+      height:58px;
+      border:none;
+      border-radius:17px;
+      background:linear-gradient(135deg, var(--accent), var(--accent2));
+      color:white;
+      font-size:16px;
+      font-weight:600;
+      font-family:'Jost',sans-serif;
+      cursor:pointer;
+      transition:0.25s;
+      margin-top:10px;
+      box-shadow:0 10px 26px rgba(93,155,255,0.22);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+
+    .signin-btn:hover{
+      transform:translateY(-2px);
+      box-shadow:0 14px 30px rgba(93,155,255,0.3);
+    }
+
+    .signin-btn:disabled{
+      opacity:0.7;
+      cursor:not-allowed;
+      transform:none;
+    }
+
+    /* Spinner */
+    .spinner{
+      width:18px;
+      height:18px;
+      border:2.5px solid rgba(255,255,255,0.4);
+      border-top-color:white;
+      border-radius:50%;
+      animation:spin 0.7s linear infinite;
+      display:none;
+    }
+
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    .success{
+      margin-top:18px;
+      background:rgba(0,184,122,0.1);
+      border:1px solid rgba(0,184,122,0.2);
+      color:var(--success);
+      padding:14px;
+      border-radius:14px;
+      text-align:center;
+      font-size:14px;
+      display:none;
+    }
+
+    .api-error{
+      margin-top:18px;
+      background:rgba(255,90,118,0.08);
+      border:1px solid rgba(255,90,118,0.2);
+      color:var(--danger);
+      padding:14px;
+      border-radius:14px;
+      text-align:center;
+      font-size:14px;
+      display:none;
+    }
+
+    @media(max-width:500px){
+      .login-card{ padding:34px 24px; }
+      .title{ font-size:38px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="bg"></div>
+<div class="grid"></div>
+
+<div class="login-card">
+
+  <div class="logo">
+    <i class="fas fa-robot"></i>
+  </div>
+
+  <div class="title">Recom AI</div>
+
+  <div class="subtitle">Smart AI powered recommendation dashboard</div>
+
+  <!-- Tab Toggle -->
+  <div class="tab-toggle">
+    <button class="tab-btn active" id="loginTab" onclick="switchTab('login')">Sign In</button>
+    <button class="tab-btn" id="registerTab" onclick="switchTab('register')">Register</button>
+  </div>
+
+  <!-- EMAIL -->
+  <div class="form-group">
+    <label class="label">Email Address</label>
+    <div class="input-box">
+      <i class="fas fa-envelope"></i>
+      <input type="email" id="email" placeholder="Enter your email"/>
+    </div>
+    <div class="helper">Email must contain a valid @ symbol</div>
+    <div class="error" id="emailError">Please enter a valid email address.</div>
+  </div>
+
+  <!-- PASSWORD -->
+  <div class="form-group">
+    <label class="label">Password</label>
+    <div class="input-box">
+      <i class="fas fa-lock"></i>
+      <input type="password" id="password" placeholder="Enter your password"/>
+    </div>
+    <div class="helper">
+      Password must contain at least 8 characters
+      <a class="forgot-password" href="#" id="forgotLink" onclick="forgotPassword(event)">Forgot password?</a>
+    </div>
+    <div class="error" id="passwordError">Password must contain at least 8 characters.</div>
+  </div>
+
+  <!-- BUTTON -->
+  <button class="signin-btn" id="submitBtn" onclick="handleSubmit()">
+    <div class="spinner" id="spinner"></div>
+    <i class="fas fa-right-to-bracket" id="btnIcon"></i>
+    <span id="btnText">Sign In</span>
+  </button>
+
+  <div class="redirect-hint" id="redirectHint" style="display:none; margin-top:16px; text-align:center; font-size:13px; color:var(--muted);">
+    If you are not redirected automatically, <a href="../newfront.html">click here</a> to go to the product dashboard.
+  </div>
+
+  <!-- MESSAGES -->
+  <div class="success" id="successBox"></div>
+  <div class="api-error" id="apiError"></div>
+
+</div>
+
+<script>
+  let currentTab = "login";
+
+  function getStoredUsers() {
+    return JSON.parse(localStorage.getItem('recom_ai_users') || '{}');
+  }
+
+  function saveStoredUsers(users) {
+    localStorage.setItem('recom_ai_users', JSON.stringify(users));
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+
+    document.getElementById("loginTab").classList.toggle("active", tab === "login");
+    document.getElementById("registerTab").classList.toggle("active", tab === "register");
+
+    document.getElementById("btnText").textContent = tab === "login" ? "Sign In" : "Create Account";
+    document.getElementById("btnIcon").className = tab === "login" ? "fas fa-right-to-bracket" : "fas fa-user-plus";
+    document.getElementById("forgotLink").style.display = tab === "login" ? "inline-block" : "none";
+
+    // Clear all messages and inputs
+    clearMessages();
+    document.getElementById("email").value = "";
+    document.getElementById("password").value = "";
+  }
+
+  function clearMessages() {
+    document.getElementById("emailError").style.display = "none";
+    document.getElementById("passwordError").style.display = "none";
+    document.getElementById("successBox").style.display = "none";
+    document.getElementById("apiError").style.display = "none";
+  }
+
+  function showApiError(msg) {
+    const el = document.getElementById("apiError");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function showSuccess(msg) {
+    const el = document.getElementById("successBox");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function setLoading(loading) {
+    const btn = document.getElementById("submitBtn");
+    const spinner = document.getElementById("spinner");
+    const icon = document.getElementById("btnIcon");
+    btn.disabled = loading;
+    spinner.style.display = loading ? "block" : "none";
+    icon.style.display = loading ? "none" : "inline";
+  }
+
+  function forgotPassword(event) {
+    event.preventDefault();
+    alert("Password reset instructions have been sent to your email.");
+  }
+
+  function validateInputs() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    let valid = true;
+
+    if (!emailPattern.test(email)) {
+      document.getElementById("emailError").style.display = "block";
+      valid = false;
+    }
+
+    if (password.length < 8) {
+      document.getElementById("passwordError").style.display = "block";
+      valid = false;
+    }
+
+    return valid;
+  }
+
+  async function handleSubmit() {
+    clearMessages();
+
+    if (!validateInputs()) return;
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    setLoading(true);
+
+    try {
+      if (currentTab === "login") {
+        await doLogin(email, password);
+      } else {
+        await doRegister(email, password);
+      }
+    } catch (err) {
+      showApiError(err.message || "Unable to complete action.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function doLogin(email, password) {
+    const users = getStoredUsers();
+    const account = users[email];
+    if (!account || account.password !== password) {
+      showApiError("Invalid email or password.");
+      return;
+    }
+
+    localStorage.setItem("user_id", email);
+    localStorage.setItem("user_email", email);
+
+    showSuccess("Login successful! Redirecting...");
+    document.getElementById('redirectHint').style.display = 'block';
+
+    setTimeout(() => {
+      window.location.href = "newfront.html";
+    }, 1000);
+  }
+
+  async function doRegister(email, password) {
+    const users = getStoredUsers();
+    if (users[email]) {
+      showApiError("Email already registered.");
+      return;
+    }
+
+    users[email] = { password };
+    saveStoredUsers(users);
+
+    showSuccess("Account created! Please sign in.");
+    setTimeout(() => switchTab("login"), 1500);
+  }
+</script>
+
+
+</body>
+</html>
