@@ -1,0 +1,449 @@
+"""
+Product Insights Backend
+========================
+Matches frontend API exactly:
+  GET /analyze?product1=<name>&product2=<name (optional)>
+
+Response shape (single product):
+  { "product1": { name, pros, cons, ranking_summary, features, typical_price } }
+
+Response shape (compare):
+  { "product1": {...}, "product2": {...}, "verdict": "...", "price_summary": "...", "price_winner": "..." }
+
+Install deps:
+  pip install fastapi uvicorn praw google-generativeai google-api-python-client
+
+Run:
+  python backend.py
+"""
+
+import re
+import time
+import socket
+import asyncio
+
+import uvicorn
+import nest_asyncio
+import praw
+import google.generativeai as genai
+from googleapiclient.discovery import build
+from google.api_core import exceptions as google_exceptions
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+# ─── CONFIG (replace with your keys) ──────────────────────────────────────────
+
+REDDIT_CLIENT_ID  = "byQMtt2TocRG-TECSxxKQA"
+REDDIT_SECRET     = "FD7ckLEoKy6nO-l93GoWiNh-uj61Bg"
+REDDIT_USER_AGENT = "product-analysis-app"
+
+YOUTUBE_API_KEY = "AIzaSyBf9T67AWC50oAKXp6WJaSUkpJmwIDE-gA"
+
+GEMINI_API_KEY  = "AIzaSyDasfKu4AdGZ1E82kXphEjG48su-xj-Guk"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+
+# Port the frontend expects to fetch from (http://127.0.0.1:8003/analyze)
+FRONTEND_PORT = 8003
+
+# ─── CLIENTS ──────────────────────────────────────────────────────────────────
+
+genai.configure(api_key=GEMINI_API_KEY)
+gemini = genai.GenerativeModel(GEMINI_MODEL)
+
+reddit  = praw.Reddit(
+    client_id=REDDIT_CLIENT_ID,
+    client_secret=REDDIT_SECRET,
+    user_agent=REDDIT_USER_AGENT,
+)
+youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+
+# ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+def find_free_port(start=8000, end=8100):
+    for port in range(start, end + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    return 8000
+
+
+def is_port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def call_gemini(prompt: str, retries: int = 2) -> str:
+    """Call Gemini and return raw text, or a MODEL_ERROR string on failure."""
+    for attempt in range(retries + 1):
+        try:
+            resp = gemini.generate_content(prompt)
+            return resp.text if hasattr(resp, "text") else str(resp)
+        except google_exceptions.ResourceExhausted as e:
+            return f"MODEL_ERROR: QUOTA_EXCEEDED: {e}"
+        except google_exceptions.ServiceUnavailable as e:
+            if attempt == retries:
+                return f"MODEL_ERROR: SERVICE_UNAVAILABLE: {e}"
+            time.sleep(1.5 ** (attempt + 1))
+        except Exception as e:
+            return f"MODEL_ERROR: {e}"
+
+
+# ─── DATA COLLECTION ──────────────────────────────────────────────────────────
+
+def fetch_reddit(product: str, limit: int = 5) -> list[str]:
+    results = []
+    try:
+        for post in reddit.subreddit("all").search(product, limit=limit):
+            text = f"{post.title} {post.selftext}".strip()
+            if text:
+                results.append(text)
+    except Exception as e:
+        print(f"[Reddit] Error: {e}")
+    return results
+
+
+def fetch_youtube(product: str, max_videos: int = 3) -> list[str]:
+    results = []
+    try:
+        search = youtube.search().list(
+            q=f"{product} review", part="snippet",
+            type="video", maxResults=max_videos
+        ).execute()
+
+        for item in search.get("items", []):
+            vid_id = item["id"].get("videoId")
+            if not vid_id:
+                continue
+            try:
+                comments = youtube.commentThreads().list(
+                    part="snippet", videoId=vid_id,
+                    maxResults=5, textFormat="plainText"
+                ).execute()
+                for c in comments.get("items", []):
+                    txt = c["snippet"]["topLevelComment"]["snippet"].get("textDisplay", "").strip()
+                    if txt:
+                        results.append(txt)
+            except Exception as e:
+                print(f"[YouTube] Comments error for {vid_id}: {e}")
+    except Exception as e:
+        print(f"[YouTube] Search error: {e}")
+    return results
+
+
+def get_all_reviews(product: str) -> list[str]:
+    return fetch_reddit(product) + fetch_youtube(product)
+
+
+# ─── PRICE EXTRACTION ─────────────────────────────────────────────────────────
+
+def extract_price(text: str) -> float | None:
+
+    if not text:
+        return None
+
+    USD_TO_INR = 85   # fixed conversion
+
+    patterns = [
+
+        (r'₹\s*([\d,]+(?:\.\d+)?)', False),
+
+        (r'Rs\.?\s*([\d,]+(?:\.\d+)?)', False),
+
+        (r'INR\s*([\d,]+(?:\.\d+)?)', False),
+
+        (r'\$\s*([\d,]+(?:\.\d+)?)', True),
+
+        (r'USD\s*([\d,]+(?:\.\d+)?)', True),
+
+    ]
+
+    for pattern, is_dollar in patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.I
+        )
+
+        if match:
+
+            price = float(
+
+                re.sub(
+                    r"[^\d.]",
+                    "",
+                    match.group(1)
+                )
+
+            )
+
+            if is_dollar:
+
+                price = price * USD_TO_INR
+
+            return price
+
+    return None
+
+# ─── RESPONSE PARSER ──────────────────────────────────────────────────────────
+
+def parse_gemini_response(product: str, text: str) -> dict:
+    """
+    Parse structured Gemini output into the shape the frontend expects:
+      { name, pros, cons, ranking_summary, features, typical_price }
+    """
+    empty = {
+        "name": product,
+        "pros": [], "cons": [],
+        "ranking_summary": "No summary available.",
+        "features": {}, "typical_price": None,
+    }
+    if not text:
+        return empty
+
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    pros, cons, features = [], [], {}
+    summary = "No summary available."
+
+    def collect_section(start_idx: int) -> list[str]:
+        out = []
+        for i in range(start_idx + 1, len(lines)):
+            ln = lines[i]
+            if re.match(
+                r'^(pros|cons|key feature|typical price|short ranking|ranking|summary)',
+                ln, re.I
+            ):
+                break
+            out.append(ln)
+        return out
+
+    found_pros = found_cons = False
+
+    for idx, ln in enumerate(lines):
+        low = ln.lower().rstrip(":")
+
+        if low.startswith("pros"):
+            found_pros = True
+            for item in collect_section(idx):
+                cleaned = re.sub(r'^[-•*]\s*', '', item).strip()
+                if cleaned:
+                    pros.append(cleaned)
+
+        elif low.startswith("cons"):
+            found_cons = True
+            for item in collect_section(idx):
+                cleaned = re.sub(r'^[-•*]\s*', '', item).strip()
+                if cleaned:
+                    cons.append(cleaned)
+
+        elif re.search(r'typical price|price:', ln, re.I):
+            price_val = extract_price(ln)
+            if price_val:
+                features["Typical Price"] = price_val
+                features["Typical Price (raw)"] = ln
+
+        elif re.match(r'^(short ranking|ranking|summary)', ln, re.I):
+            sec = collect_section(idx)
+            if sec:
+                summary = " ".join(sec)[:400]
+
+        # Feature rows: "Battery: Good 4500mAh"
+        for key in ("Battery", "Camera", "Price", "Performance"):
+            if key.lower() in ln.lower() and key not in features:
+                parts = re.split(r'[:\-—]', ln, maxsplit=1)
+                val = parts[-1].strip() if len(parts) > 1 else ""
+                if val:
+                    features[key] = val
+
+    # Fallback: bullet heuristics
+    if not found_pros and not found_cons:
+        neg = re.compile(
+            r'\b(bad|poor|slow|expensive|overheat|issue|problem|lag|bug|disappoint|limited|weak)\b',
+            re.I
+        )
+        for ln in lines:
+            if re.match(r'^[-•*]\s', ln):
+                item = re.sub(r'^[-•*]\s*', '', ln).strip()
+                (cons if neg.search(item) else pros).append(item)
+
+    # Broad price fallback
+    if "Typical Price" not in features:
+        price_val = extract_price(text)
+        if price_val:
+            features["Typical Price"] = price_val
+
+    # Summary fallback: last non-empty line
+    if summary == "No summary available.":
+        for ln in reversed(lines):
+            if ln:
+                summary = ln
+                break
+
+    def dedup(lst):
+        seen, out = set(), []
+        for x in lst:
+            if x and x not in seen:
+                seen.add(x)
+                out.append(x)
+        return out[:12]
+
+    typical_price = features.get("Typical Price")
+    if not isinstance(typical_price, (int, float)):
+        typical_price = None
+
+    return {
+        "name": product,
+        "pros": dedup(pros),
+        "cons": dedup(cons),
+        "ranking_summary": summary,
+        "features": features,
+        "typical_price": typical_price,
+    }
+
+
+# ─── CORE ANALYSIS ────────────────────────────────────────────────────────────
+
+ANALYSIS_PROMPT = """
+You are analyzing reviews for {product}.
+Respond ONLY in this exact format (no extra prose):
+
+Pros:
+- <bullet>
+- <bullet>
+
+Cons:
+- <bullet>
+- <bullet>
+
+Key feature ratings:
+Battery: <short note>
+Camera: <short note>
+Price: <short note>
+Performance: <short note>
+
+Typical Price: <price with currency symbol, e.g. ₹49,999 or $499>
+
+Short ranking/summary:
+<1-2 sentence summary>
+
+Reviews:
+{reviews}
+"""
+
+COMPARE_PROMPT = """
+Compare these two products and give a 2-3 sentence verdict covering battery,
+camera, performance, and price. Mention which is cheaper and whether the
+premium is justified.
+
+Product 1: {p1}
+Product 2: {p2}
+"""
+
+
+def analyze_product(product: str, reviews: list[str]) -> dict:
+    if not reviews:
+        return {
+            "name": product, "pros": [], "cons": [],
+            "ranking_summary": "No reviews found.",
+            "features": {}, "typical_price": None,
+        }
+
+    prompt = ANALYSIS_PROMPT.format(product=product, reviews=reviews)
+    raw = call_gemini(prompt)
+
+    if raw.startswith("MODEL_ERROR"):
+        return {
+            "name": product, "pros": [], "cons": [],
+            "ranking_summary": "AI analysis failed.",
+            "features": {}, "typical_price": None, "error": raw,
+        }
+
+    return parse_gemini_response(product, raw)
+
+
+# ─── FASTAPI APP ──────────────────────────────────────────────────────────────
+
+app = FastAPI(title="Product Insights API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/analyze")
+def analyze(product1: str, product2: str = None):
+    # ── Single product ────────────────────────────────────────────────────────
+    reviews1  = get_all_reviews(product1)
+    product1_data = analyze_product(product1, reviews1)
+
+    if not product2:
+        return {"product1": product1_data}
+
+    # ── Comparison ────────────────────────────────────────────────────────────
+    reviews2  = get_all_reviews(product2)
+    product2_data = analyze_product(product2, reviews2)
+
+    # AI verdict
+    compare_prompt = COMPARE_PROMPT.format(
+        p1=product1_data, p2=product2_data
+    )
+    verdict = call_gemini(compare_prompt)
+    if verdict.startswith("MODEL_ERROR"):
+        verdict = None
+
+    # Price comparison
+    p1_price = product1_data.get("typical_price")
+    p2_price = product2_data.get("typical_price")
+
+    price_summary = None
+    price_winner  = None
+
+    if isinstance(p1_price, (int, float)) and isinstance(p2_price, (int, float)):
+        if p1_price < p2_price:
+            price_summary = f"{product1} is cheaper ({p1_price:,.0f}) than {product2} ({p2_price:,.0f})."
+            price_winner  = product1
+        elif p2_price < p1_price:
+            price_summary = f"{product2} is cheaper ({p2_price:,.0f}) than {product1} ({p1_price:,.0f})."
+            price_winner  = product2
+        else:
+            price_summary = f"Both products are similarly priced ({p1_price:,.0f})."
+
+    return {
+        "product1":      product1_data,
+        "product2":      product2_data,
+        "verdict":       verdict,
+        "price_summary": price_summary,
+        "price_winner":  price_winner,
+    }
+
+
+# ─── ENTRY POINT ──────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    nest_asyncio.apply()
+    # Use the fixed port the frontend expects (127.0.0.1:8003).
+    # Falls back to scanning 8000-8100 only if 8003 is already taken.
+    port = FRONTEND_PORT if is_port_free(FRONTEND_PORT) else find_free_port(8000, 8100)
+    if port != FRONTEND_PORT:
+        print(f"WARNING: port {FRONTEND_PORT} was busy, using {port} instead — "
+              f"update the frontend's fetch URL to match, or free up {FRONTEND_PORT}.")
+    print(f"Starting server at http://127.0.0.1:{port}")
+    config = uvicorn.Config(app=app, host="127.0.0.1", port=port, log_level="info")
+    server = uvicorn.Server(config)
+    loop   = asyncio.get_event_loop()
+    loop.create_task(server.serve())
+    try:
+        loop.run_forever()
+    except (KeyboardInterrupt, SystemExit):
+        print("Server stopped.")
