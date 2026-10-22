@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recom AI Dashboard</title>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=Poppins:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+
+body {
+  margin: 0;
+  font-family: 'Poppins', sans-serif;
+  background: #eef5ff;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+
+  /* Grid background */
+  background-image:
+    linear-gradient(rgba(30, 58, 138, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 138, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* NAVBAR */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 60px;
+  background: rgba(255,255,255,0.6);
+  backdrop-filter: blur(10px);
+}
+
+.logo {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 70px;
+  font-weight: 600;
+  color: #1e3a8a;
+}
+
+.nav-links a {
+  text-decoration: none;
+  color: #1e3a8a;
+  margin-left: 50px;
+  font-size: 25px;
+  position: relative;
+}
+
+/* underline hover */
+.nav-links a::after {
+  content: "";
+  position: absolute;
+  width: 0%;
+  height: 2px;
+  background: #2563eb;
+  left: 0;
+  bottom: -4px;
+  transition: 0.3s;
+}
+
+.nav-links a:hover::after {
+  width: 100%;
+}
+
+/* CENTER CONTENT */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* HEADING */
+.main h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 100px;
+  font-weight: 700; /* NOT bold */
+  letter-spacing: 5px;
+  margin: 0;
+  color: #1e3a8a;
+}
+
+/* SUBTEXT */
+.main p {
+  font-size: 18px;
+  color: #475569;
+  margin-top: -8px;
+}
+
+/* CARDS */
+.cards {
+  display: flex;
+  gap: 30px;
+  margin-top: 50px;
+}
+
+.card {
+  width: 260px;
+  padding: 30px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(10px);
+  text-align: center;
+  transition: 0.3s;
+  position: relative;
+  cursor: pointer;
+}
+
+.card:hover {
+  transform: translateY(-10px) scale(1.05);
+  box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+}
+
+.card h3 {
+  color: #1e3a8a;
+  margin-bottom: 10px;
+}
+
+.card p {
+  font-size: 14px;
+  color: #475569;
+}
+
+/* POPUP */
+.popup {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translate(-50%, 100%);
+  background: #1e3a8a;
+  color: white;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  width: 200px;
+  opacity: 0;
+  transition: 0.3s;
+}
+
+.card:hover .popup {
+  opacity: 1;
+  transform: translate(-50%, 120%);
+}
+
+/* FOOTER */
+.footer {
+  text-align: center;
+  padding: 15px;
+  font-size: 14px;
+  background: rgba(255,255,255,0.6);
+  backdrop-filter: blur(10px);
+  color: #1e3a8a;
+}
+
+/* RESPONSIVE */
+@media(max-width: 900px) {
+  .cards {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .main h1 {
+    font-size: 60px;
+  }
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<div class="navbar">
+  <div class="logo">Recom AI</div>
+  <div class="nav-links">
+    <a href="newlogin.html">Login</a>
+    <a href="aboutus.html">About Us</a>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <h1>Recom AI</h1>
+  <p>Smart Product Recommendation System</p>
+
+  <div class="cards">
+
+    <div class="card">
+      <h3>Product Insights</h3>
+      <p>Compare products easily</p>
+      <div class="popup">Detailed analytics & comparison tools</div>
+    </div>
+
+    <div class="card">
+      <h3>Smart AI</h3>
+      <p>AI-powered suggestions</p>
+      <div class="popup">Personalized recommendations</div>
+    </div>
+
+    <div class="card">
+      <h3>Fast Results</h3>
+      <p>Instant insights</p>
+      <div class="popup">Quick and efficient processing</div>
+    </div>
+
+  </div>
+</div>
+<script>
+async function saveSearchHistory(productName) {
+
+  try {
+    await fetch("http://localhost:5000/save-history", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: localStorage.getItem("userEmail"),
+        search: productName
+      })
+    });
+
+    console.log("Search history saved");
+
+  } catch (error) {
+    console.log("Error saving history:", error);
+  }
+}
+
+
+/* Example */
+document.querySelectorAll(".card").forEach(card => {
+
+  card.addEventListener("click", () => {
+
+    const product = card.querySelector("h3").innerText;
+
+    saveSearchHistory(product);
+
+  });
+
+});
+</script>
+
+<!-- FOOTER -->
+<div class="footer">
+  © 2026 Recom AI | All Rights Reserved
+</div>
+
+</body>
+</html>
